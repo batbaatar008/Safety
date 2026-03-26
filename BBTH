@@ -1,22 +1,44 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import {
+  Building2,
+  ShieldCheck,
+  UserCog,
+  Users,
+  Shirt,
+  Plus,
+  LogOut,
+  Search,
+  Download,
+  Trash2,
+  RefreshCw,
+  Eye,
+  Pencil,
+} from "lucide-react";
 
-// ================= CONFIG =================
 const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
 const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-const TABLE = "uniform_records";
+const TABLE_RECORDS = "uniform_records";
+const TABLE_USERS = "app_users";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ================= COMPANY =================
 const COMPANY = "Дархан Сэлэнгийн цахилгаан түгээх сүлжээ ХК";
-const TITLE = "ББТХ ХАБЭА-н хувцас хэрэглэлийн бүртгэл";
+const APP_TITLE = "ББТХ ХАБЭА-н хувцас хэрэглэлийн бүртгэл";
+const DEPARTMENT = "Борлуулалтын бодлого төлөвлөлтийн хэлтэс";
 
-// ================= LOGIN =================
-const USER = "admin";
-const PASS = "1234";
+const DEFAULT_ADMIN = {
+  username: "admin",
+  password: "1234",
+  full_name: "Системийн админ",
+  role: "admin",
+  is_active: true,
+};
 
-// ================= EMPLOYEES =================
+const roles = [
+  { value: "admin", label: "Админ" },
+  { value: "manager", label: "Хариуцагч" },
+  { value: "viewer", label: "Зөвхөн харах" },
+];
+
 const employees = [
   { name: "С.Батбаатар", position: "Хэлтсийн дарга" },
   { name: "Ч.Золзаяа", position: "Тооцооны инженер" },
@@ -27,7 +49,6 @@ const employees = [
   { name: "Б.Төгөлдөр", position: "Судалгаа шинжилгээний инженер" },
 ];
 
-// ================= UNIFORMS =================
 const uniforms = [
   "Өвлийн ажлын хувцас",
   "Өвлийн ажлын гутал",
@@ -38,99 +59,768 @@ const uniforms = [
   "Хамгаалах дуулга",
 ];
 
-export default function App() {
-  const [logged, setLogged] = useState(false);
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
+const employeeMap = Object.fromEntries(employees.map((e) => [e.name, e.position]));
 
+const hasConfig =
+  SUPABASE_URL.startsWith("https://") &&
+  !SUPABASE_URL.includes("YOUR_PROJECT_ID") &&
+  !!SUPABASE_ANON_KEY &&
+  !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
+
+const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const box = {
+  background: "rgba(255,255,255,0.88)",
+  border: "1px solid rgba(255,255,255,0.4)",
+  borderRadius: 24,
+  boxShadow: "0 20px 50px rgba(15,23,42,0.18)",
+  backdropFilter: "blur(12px)",
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: "1px solid #cbd5e1",
+  outline: "none",
+  fontSize: 14,
+  background: "white",
+  boxSizing: "border-box",
+};
+
+const buttonPrimary = {
+  padding: "12px 16px",
+  borderRadius: 14,
+  border: "none",
+  background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
+  color: "white",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const buttonSecondary = {
+  padding: "12px 16px",
+  borderRadius: 14,
+  border: "1px solid #cbd5e1",
+  background: "white",
+  color: "#0f172a",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+function AppIcon({ icon: Icon, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#334155", fontSize: 13 }}>
+      <Icon size={16} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (s.includes(",") || s.includes('"') || s.includes("
+")) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportCSV(filename, rows) {
+  if (!rows.length) {
+    alert("Экспортлох өгөгдөл алга.");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const content = [headers.map(csvEscape).join(",")]
+    .concat(rows.map((row) => headers.map((h) => csvEscape(row[h])).join(",")))
+    .join("
+");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function Badge({ children, tone = "default" }) {
+  const styles = {
+    default: { background: "#e2e8f0", color: "#0f172a" },
+    green: { background: "#dcfce7", color: "#166534" },
+    blue: { background: "#dbeafe", color: "#1d4ed8" },
+    amber: { background: "#fef3c7", color: "#92400e" },
+    red: { background: "#fee2e2", color: "#b91c1c" },
+  };
+  return <span style={{ ...styles[tone], padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700 }}>{children}</span>;
+}
+
+export default function App() {
+  const [ready, setReady] = useState(false);
+  const [login, setLogin] = useState({ username: "", password: "" });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsers] = useState([]);
   const [records, setRecords] = useState([]);
-  const [form, setForm] = useState({
-    employee: "",
-    position: "",
-    item: "",
+  const [search, setSearch] = useState("");
+  const [selectedUniform, setSelectedUniform] = useState("all");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("records");
+  const [status, setStatus] = useState(hasConfig ? "Онлайн өгөгдлийн сантай холбогдоход бэлэн." : "Supabase тохиргоо хийгээгүй байна.");
+
+  const [recordForm, setRecordForm] = useState({
+    employee: employees[0].name,
+    position: employees[0].position,
+    item: uniforms[0],
     size: "",
     qty: 1,
-    date: new Date().toISOString().slice(0, 10),
+    issued_date: new Date().toISOString().slice(0, 10),
+    note: "",
   });
 
-  // ===== LOGIN =====
-  if (!logged) {
+  const [userForm, setUserForm] = useState({
+    full_name: "",
+    username: "",
+    password: "",
+    role: "viewer",
+  });
+
+  const canManageUsers = currentUser?.role === "admin";
+  const canEditRecords = currentUser?.role === "admin" || currentUser?.role === "manager";
+
+  useEffect(() => {
+    bootstrap();
+  }, []);
+
+  async function bootstrap() {
+    if (!supabase) {
+      setUsers([DEFAULT_ADMIN]);
+      setReady(true);
+      return;
+    }
+
+    await ensureDefaultAdmin();
+    await loadUsers();
+    await loadRecords();
+    setReady(true);
+  }
+
+  async function ensureDefaultAdmin() {
+    const { data, error } = await supabase.from(TABLE_USERS).select("*").eq("username", DEFAULT_ADMIN.username).maybeSingle();
+    if (error && !String(error.message).toLowerCase().includes("no rows")) {
+      setStatus(`Хэрэглэгч шалгах үед алдаа: ${error.message}`);
+      return;
+    }
+    if (!data) {
+      const { error: insertError } = await supabase.from(TABLE_USERS).insert([DEFAULT_ADMIN]);
+      if (insertError) setStatus(`Анхны админ үүсгэхэд алдаа: ${insertError.message}`);
+    }
+  }
+
+  async function loadUsers() {
+    if (!supabase) return;
+    const { data, error } = await supabase.from(TABLE_USERS).select("*").order("created_at", { ascending: false });
+    if (error) {
+      setStatus(`Хэрэглэгчийн жагсаалт уншихад алдаа: ${error.message}`);
+      return;
+    }
+    setUsers(data || []);
+  }
+
+  async function loadRecords() {
+    if (!supabase) return;
+    const { data, error } = await supabase.from(TABLE_RECORDS).select("*").order("issued_date", { ascending: false }).order("created_at", { ascending: false });
+    if (error) {
+      setStatus(`Бүртгэл уншихад алдаа: ${error.message}`);
+      return;
+    }
+    setRecords(data || []);
+  }
+
+  async function handleLogin() {
+    if (!login.username || !login.password) {
+      alert("Нэвтрэх нэр, нууц үгээ оруулна уу.");
+      return;
+    }
+
+    if (!supabase) {
+      if (login.username === DEFAULT_ADMIN.username && login.password === DEFAULT_ADMIN.password) {
+        setCurrentUser(DEFAULT_ADMIN);
+        return;
+      }
+      alert("Supabase тохируулаагүй үед зөвхөн demo admin ашиглана.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from(TABLE_USERS)
+      .select("*")
+      .eq("username", login.username)
+      .eq("password", login.password)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error) {
+      alert(`Нэвтрэх үед алдаа: ${error.message}`);
+      return;
+    }
+    if (!data) {
+      alert("Нэвтрэх нэр эсвэл нууц үг буруу байна.");
+      return;
+    }
+
+    setCurrentUser(data);
+    setStatus(`${data.full_name} амжилттай нэвтэрлээ.`);
+  }
+
+  function logout() {
+    setCurrentUser(null);
+    setLogin({ username: "", password: "" });
+  }
+
+  async function addUser() {
+    if (!canManageUsers) return;
+    if (!userForm.full_name || !userForm.username || !userForm.password) {
+      alert("Хэрэглэгчийн мэдээллээ бүрэн оруулна уу.");
+      return;
+    }
+
+    if (!supabase) {
+      alert("Supabase тохируулсны дараа хэрэглэгч хадгална.");
+      return;
+    }
+
+    const payload = { ...userForm, is_active: true };
+    const { error } = await supabase.from(TABLE_USERS).insert([payload]);
+    if (error) {
+      alert(`Хэрэглэгч нэмэхэд алдаа: ${error.message}`);
+      return;
+    }
+
+    setUserForm({ full_name: "", username: "", password: "", role: "viewer" });
+    await loadUsers();
+    setStatus("Шинэ хэрэглэгч үүсгэлээ.");
+  }
+
+  async function toggleUserActive(target) {
+    if (!canManageUsers) return;
+    if (!supabase) {
+      alert("Supabase тохируулсны дараа хэрэглэгчийн төлөв өөрчилнө.");
+      return;
+    }
+    const { error } = await supabase.from(TABLE_USERS).update({ is_active: !target.is_active }).eq("id", target.id);
+    if (error) {
+      alert(`Төлөв өөрчлөхөд алдаа: ${error.message}`);
+      return;
+    }
+    await loadUsers();
+  }
+
+  async function addRecord() {
+    if (!canEditRecords) return;
+    if (!recordForm.employee || !recordForm.item || !recordForm.issued_date) {
+      alert("Бүртгэлийн мэдээллээ гүйцэд оруулна уу.");
+      return;
+    }
+    if (!supabase) {
+      alert("Supabase тохируулсны дараа онлайн хадгалалт ажиллана.");
+      return;
+    }
+
+    const payload = {
+      ...recordForm,
+      qty: Number(recordForm.qty || 1),
+      department: DEPARTMENT,
+      created_by: currentUser?.username || "",
+    };
+
+    const { error } = await supabase.from(TABLE_RECORDS).insert([payload]);
+    if (error) {
+      alert(`Бүртгэл хадгалахад алдаа: ${error.message}`);
+      return;
+    }
+
+    setRecordForm({
+      employee: employees[0].name,
+      position: employees[0].position,
+      item: uniforms[0],
+      size: "",
+      qty: 1,
+      issued_date: new Date().toISOString().slice(0, 10),
+      note: "",
+    });
+    await loadRecords();
+    setStatus("Бүртгэл амжилттай хадгалагдлаа.");
+  }
+
+  async function deleteRecord(id) {
+    if (!canEditRecords) return;
+    if (!window.confirm("Энэ бүртгэлийг устгах уу?")) return;
+    if (!supabase) {
+      alert("Supabase тохируулсны дараа устгах боломжтой.");
+      return;
+    }
+    const { error } = await supabase.from(TABLE_RECORDS).delete().eq("id", id);
+    if (error) {
+      alert(`Устгахад алдаа: ${error.message}`);
+      return;
+    }
+    await loadRecords();
+  }
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      const q = search.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        [r.employee, r.position, r.item, r.size, r.note, r.created_by]
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+      const matchUniform = selectedUniform === "all" || r.item === selectedUniform;
+      const matchEmployee = employeeFilter === "all" || r.employee === employeeFilter;
+      return matchSearch && matchUniform && matchEmployee;
+    });
+  }, [records, search, selectedUniform, employeeFilter]);
+
+  const summary = useMemo(() => {
+    const totalQty = filteredRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
+    const employeeCount = new Set(filteredRecords.map((r) => r.employee)).size;
+    const byItem = filteredRecords.reduce((acc, r) => {
+      acc[r.item] = (acc[r.item] || 0) + Number(r.qty || 0);
+      return acc;
+    }, {});
+    const topItem = Object.entries(byItem).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+    return { totalQty, employeeCount, topItem };
+  }, [filteredRecords]);
+
+  function handleEmployeeChange(name) {
+    setRecordForm((prev) => ({ ...prev, employee: name, position: employeeMap[name] || "" }));
+  }
+
+  function exportRecordsReport() {
+    exportCSV(
+      `bbth-habaea-burtgel-${new Date().toISOString().slice(0, 10)}.csv`,
+      filteredRecords.map((r, i) => ({
+        "№": i + 1,
+        "Хэлтэс": r.department,
+        "Нэр": r.employee,
+        "Албан тушаал": r.position,
+        "Хэрэглэл": r.item,
+        "Размер": r.size,
+        "Тоо": r.qty,
+        "Олгосон огноо": r.issued_date,
+        "Тэмдэглэл": r.note,
+        "Бүртгэсэн": r.created_by,
+      }))
+    );
+  }
+
+  function exportSummaryReport() {
+    const grouped = {};
+    filteredRecords.forEach((r) => {
+      const key = `${r.employee}|||${r.item}`;
+      if (!grouped[key]) grouped[key] = { employee: r.employee, item: r.item, qty: 0 };
+      grouped[key].qty += Number(r.qty || 0);
+    });
+    exportCSV(
+      `bbth-habaea-tailan-${new Date().toISOString().slice(0, 10)}.csv`,
+      Object.values(grouped).map((r, i) => ({
+        "№": i + 1,
+        "Нэр": r.employee,
+        "Хэрэглэл": r.item,
+        "Нийт тоо": r.qty,
+      }))
+    );
+  }
+
+  if (!ready) {
+    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "Arial" }}>Ачаалж байна...</div>;
+  }
+
+  if (!currentUser) {
     return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#0f172a,#0ea5e9)" }}>
-        <div style={{ background: "white", padding: 30, borderRadius: 20, width: 300 }}>
-          <h3>{COMPANY}</h3>
-          <h4>{TITLE}</h4>
-          <input placeholder="Нэвтрэх нэр" value={user} onChange={e => setUser(e.target.value)} />
-          <input type="password" placeholder="Нууц үг" value={pass} onChange={e => setPass(e.target.value)} />
-          <button onClick={() => {
-            if (user === USER && pass === PASS) setLogged(true);
-            else alert("Буруу нэвтрэлт");
-          }}>Нэвтрэх</button>
+      <div
+        style={{
+          minHeight: "100vh",
+          fontFamily: "Arial, sans-serif",
+          background:
+            "radial-gradient(circle at top left, rgba(125,211,252,0.45), transparent 25%), radial-gradient(circle at top right, rgba(14,165,233,0.30), transparent 25%), linear-gradient(135deg, #0f172a 0%, #0b3b66 45%, #38bdf8 100%)",
+          display: "grid",
+          placeItems: "center",
+          padding: 20,
+        }}
+      >
+        <div style={{ ...box, width: "100%", maxWidth: 460, padding: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 24,
+                background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
+                color: "white",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Building2 size={34} />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 700, opacity: 0.8 }}>{COMPANY}</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>{APP_TITLE}</div>
+              <div style={{ marginTop: 6, fontSize: 13, color: "#475569" }}>{DEPARTMENT}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12, marginTop: 20 }}>
+            <div>
+              <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: 700 }}>Нэвтрэх нэр</label>
+              <input style={inputStyle} value={login.username} onChange={(e) => setLogin({ ...login, username: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: 700 }}>Нууц үг</label>
+              <input type="password" style={inputStyle} value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} />
+            </div>
+            <button style={buttonPrimary} onClick={handleLogin}>
+              Нэвтрэх
+            </button>
+          </div>
+
+          <div style={{ marginTop: 18, display: "grid", gap: 8 }}>
+            <AppIcon icon={ShieldCheck} label="Админ бусад хэрэглэгчид эрх нээх боломжтой" />
+            <AppIcon icon={Users} label="Зөвхөн ББТХ-ийн 7 инженерийн бүртгэл орно" />
+            <AppIcon icon={Shirt} label="Хувцас, хэрэглэлийн 7 ангилалтай" />
+          </div>
+
+          <div style={{ marginTop: 18, fontSize: 12, color: "#475569" }}>
+            Demo admin: <b>admin</b> / <b>1234</b>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ===== LOAD =====
-  useEffect(() => { load(); }, []);
-
-  async function load() {
-    const { data } = await supabase.from(TABLE).select("*");
-    setRecords(data || []);
-  }
-
-  async function save() {
-    await supabase.from(TABLE).insert([form]);
-    load();
-  }
-
   return (
-    <div style={{ padding: 20 }}>
-      <h2>{COMPANY}</h2>
-      <h3>{TITLE}</h3>
+    <div
+      style={{
+        minHeight: "100vh",
+        fontFamily: "Arial, sans-serif",
+        background:
+          "radial-gradient(circle at top left, rgba(186,230,253,0.5), transparent 18%), radial-gradient(circle at right, rgba(125,211,252,0.30), transparent 20%), linear-gradient(180deg, #eff6ff 0%, #e0f2fe 30%, #f8fafc 100%)",
+        padding: 20,
+      }}
+    >
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        <div style={{ ...box, padding: 24, marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 24,
+                  background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
+                  color: "white",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Building2 size={34} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: "#334155", fontWeight: 700 }}>{COMPANY}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>{APP_TITLE}</div>
+                <div style={{ marginTop: 4, fontSize: 14, color: "#475569" }}>{DEPARTMENT}</div>
+              </div>
+            </div>
 
-      <div style={{ marginTop: 20 }}>
-        <select onChange={e => {
-          const emp = employees.find(x => x.name === e.target.value);
-          setForm({ ...form, employee: emp.name, position: emp.position });
-        }}>
-          <option>Ажилтан сонгох</option>
-          {employees.map(e => <option key={e.name}>{e.name}</option>)}
-        </select>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Badge tone="blue">{roles.find((r) => r.value === currentUser.role)?.label || currentUser.role}</Badge>
+              <Badge tone={hasConfig ? "green" : "amber"}>{hasConfig ? "Онлайн холбогдсон" : "Supabase тохируулаагүй"}</Badge>
+              <span style={{ fontSize: 14, color: "#334155", fontWeight: 700 }}>{currentUser.full_name}</span>
+              <button style={buttonSecondary} onClick={logout}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><LogOut size={16} />Гарах</span>
+              </button>
+            </div>
+          </div>
+          <div style={{ marginTop: 14, fontSize: 13, color: "#475569" }}>{status}</div>
+        </div>
 
-        <select onChange={e => setForm({ ...form, item: e.target.value })}>
-          <option>Хувцас сонгох</option>
-          {uniforms.map(u => <option key={u}>{u}</option>)}
-        </select>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 16, marginBottom: 18 }}>
+          <div style={{ ...box, padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#475569", marginBottom: 8 }}><Shirt size={18} />Нийт олгосон тоо</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: "#0f172a" }}>{summary.totalQty}</div>
+          </div>
+          <div style={{ ...box, padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#475569", marginBottom: 8 }}><Users size={18} />Хамрагдсан ажилтан</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: "#0f172a" }}>{summary.employeeCount}</div>
+          </div>
+          <div style={{ ...box, padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#475569", marginBottom: 8 }}><Eye size={18} />Их олгогдсон төрөл</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>{summary.topItem}</div>
+          </div>
+        </div>
 
-        <input placeholder="Размер" onChange={e => setForm({ ...form, size: e.target.value })} />
-        <input type="number" onChange={e => setForm({ ...form, qty: e.target.value })} />
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <button style={activeTab === "records" ? buttonPrimary : buttonSecondary} onClick={() => setActiveTab("records")}>Бүртгэл</button>
+          {canManageUsers && <button style={activeTab === "users" ? buttonPrimary : buttonSecondary} onClick={() => setActiveTab("users")}>Хэрэглэгчийн эрх</button>}
+          <button style={activeTab === "setup" ? buttonPrimary : buttonSecondary} onClick={() => setActiveTab("setup")}>Суулгах заавар</button>
+        </div>
 
-        <button onClick={save}>Хадгалах</button>
+        {activeTab === "records" && (
+          <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 18 }}>
+            <div style={{ ...box, padding: 20, alignSelf: "start" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 16 }}>Шинэ бүртгэл</div>
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Ажилтан</label>
+                  <select style={inputStyle} value={recordForm.employee} onChange={(e) => handleEmployeeChange(e.target.value)} disabled={!canEditRecords}>
+                    {employees.map((e) => <option key={e.name} value={e.name}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Албан тушаал</label>
+                  <input style={{ ...inputStyle, background: "#f8fafc" }} value={recordForm.position} readOnly />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Хэрэглэлийн төрөл</label>
+                  <select style={inputStyle} value={recordForm.item} onChange={(e) => setRecordForm({ ...recordForm, item: e.target.value })} disabled={!canEditRecords}>
+                    {uniforms.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Размер</label>
+                    <input style={inputStyle} value={recordForm.size} onChange={(e) => setRecordForm({ ...recordForm, size: e.target.value })} disabled={!canEditRecords} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Тоо</label>
+                    <input type="number" min="1" style={inputStyle} value={recordForm.qty} onChange={(e) => setRecordForm({ ...recordForm, qty: e.target.value })} disabled={!canEditRecords} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Олгосон огноо</label>
+                  <input type="date" style={inputStyle} value={recordForm.issued_date} onChange={(e) => setRecordForm({ ...recordForm, issued_date: e.target.value })} disabled={!canEditRecords} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Тэмдэглэл</label>
+                  <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={recordForm.note} onChange={(e) => setRecordForm({ ...recordForm, note: e.target.value })} disabled={!canEditRecords} />
+                </div>
+                <button style={{ ...buttonPrimary, opacity: canEditRecords ? 1 : 0.6 }} onClick={addRecord} disabled={!canEditRecords}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Plus size={16} />Хадгалах</span>
+                </button>
+                {!canEditRecords && <div style={{ fontSize: 12, color: "#b45309" }}>Энэ эрхээр бүртгэл нэмэх боломжгүй. Админ эсвэл хариуцагч эрх шаардлагатай.</div>}
+              </div>
+            </div>
+
+            <div style={{ ...box, padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Бүртгэлийн жагсаалт</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button style={buttonSecondary} onClick={loadRecords}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><RefreshCw size={16} />Шинэчлэх</span></button>
+                  <button style={buttonSecondary} onClick={exportRecordsReport}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Download size={16} />Бүртгэл экспорт</span></button>
+                  <button style={buttonSecondary} onClick={exportSummaryReport}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Download size={16} />Тайлан экспорт</span></button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+                <div style={{ position: "relative" }}>
+                  <Search size={16} style={{ position: "absolute", left: 12, top: 13, color: "#64748b" }} />
+                  <input style={{ ...inputStyle, paddingLeft: 36 }} placeholder="Хайлт..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                </div>
+                <select style={inputStyle} value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}>
+                  <option value="all">Бүх ажилтан</option>
+                  {employees.map((e) => <option key={e.name} value={e.name}>{e.name}</option>)}
+                </select>
+                <select style={inputStyle} value={selectedUniform} onChange={(e) => setSelectedUniform(e.target.value)}>
+                  <option value="all">Бүх төрөл</option>
+                  {uniforms.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+
+              <div style={{ overflow: "auto", border: "1px solid #dbeafe", borderRadius: 18, background: "white" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 950 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                      {[
+                        "№",
+                        "Нэр",
+                        "Албан тушаал",
+                        "Хэрэглэлийн төрөл",
+                        "Размер",
+                        "Тоо",
+                        "Огноо",
+                        "Бүртгэсэн",
+                        "Тэмдэглэл",
+                        "Үйлдэл",
+                      ].map((h) => (
+                        <th key={h} style={{ padding: 12, borderBottom: "1px solid #e2e8f0", fontSize: 13, color: "#334155" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRecords.length ? (
+                      filteredRecords.map((r, i) => (
+                        <tr key={r.id || i}>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{i + 1}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 700 }}>{r.employee}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.position}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.item}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.size || "—"}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.qty}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.issued_date}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.created_by || "—"}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.note || "—"}</td>
+                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                            <button style={{ ...buttonSecondary, padding: "8px 10px", opacity: canEditRecords ? 1 : 0.6 }} disabled={!canEditRecords} onClick={() => deleteRecord(r.id)}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trash2 size={14} />Устгах</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={10} style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Бүртгэл олдсонгүй.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "users" && canManageUsers && (
+          <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 18 }}>
+            <div style={{ ...box, padding: 20, alignSelf: "start" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 16 }}>Шинэ хэрэглэгч нээх</div>
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Овог нэр</label>
+                  <input style={inputStyle} value={userForm.full_name} onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нэвтрэх нэр</label>
+                  <input style={inputStyle} value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нууц үг</label>
+                  <input style={inputStyle} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Эрхийн түвшин</label>
+                  <select style={inputStyle} value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
+                    {roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+                <button style={buttonPrimary} onClick={addUser}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><UserCog size={16} />Хэрэглэгч үүсгэх</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ ...box, padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Хэрэглэгчийн жагсаалт</div>
+                <button style={buttonSecondary} onClick={loadUsers}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><RefreshCw size={16} />Шинэчлэх</span></button>
+              </div>
+
+              <div style={{ overflow: "auto", border: "1px solid #dbeafe", borderRadius: 18, background: "white" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                      {[
+                        "№",
+                        "Овог нэр",
+                        "Нэвтрэх нэр",
+                        "Эрх",
+                        "Төлөв",
+                        "Үйлдэл",
+                      ].map((h) => (
+                        <th key={h} style={{ padding: 12, borderBottom: "1px solid #e2e8f0", fontSize: 13, color: "#334155" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u, i) => (
+                      <tr key={u.id || i}>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{i + 1}</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 700 }}>{u.full_name}</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{u.username}</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <Badge tone={u.role === "admin" ? "red" : u.role === "manager" ? "blue" : "default"}>{roles.find((r) => r.value === u.role)?.label || u.role}</Badge>
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <Badge tone={u.is_active ? "green" : "amber"}>{u.is_active ? "Идэвхтэй" : "Идэвхгүй"}</Badge>
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          {u.username !== DEFAULT_ADMIN.username ? (
+                            <button style={{ ...buttonSecondary, padding: "8px 10px" }} onClick={() => toggleUserActive(u)}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{u.is_active ? <Pencil size={14} /> : <Eye size={14} />}{u.is_active ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}</span>
+                            </button>
+                          ) : (
+                            <span style={{ color: "#64748b", fontSize: 13 }}>Үндсэн админ</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "setup" && (
+          <div style={{ ...box, padding: 24 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", marginBottom: 14 }}>Supabase суулгах заавар</div>
+            <div style={{ color: "#334155", lineHeight: 1.7 }}>
+              <p>1. Дээрх кодын <b>SUPABASE_URL</b>, <b>SUPABASE_ANON_KEY</b> утгуудыг өөрийн төслийн мэдээллээр солино.</p>
+              <p>2. Доорх SQL-ийг Supabase SQL Editor дээр ажиллуулна.</p>
+            </div>
+            <pre style={{ marginTop: 12, background: "#0f172a", color: "#e2e8f0", padding: 18, borderRadius: 18, overflow: "auto", fontSize: 12 }}>
+{`create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  username text not null unique,
+  password text not null,
+  role text not null default 'viewer',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.uniform_records (
+  id uuid primary key default gen_random_uuid(),
+  department text not null,
+  employee text not null,
+  position text not null,
+  item text not null,
+  size text,
+  qty integer not null default 1,
+  issued_date date not null,
+  note text,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.app_users enable row level security;
+alter table public.uniform_records enable row level security;
+
+create policy "users read" on public.app_users for select using (true);
+create policy "users insert" on public.app_users for insert with check (true);
+create policy "users update" on public.app_users for update using (true);
+
+create policy "records read" on public.uniform_records for select using (true);
+create policy "records insert" on public.uniform_records for insert with check (true);
+create policy "records delete" on public.uniform_records for delete using (true);`}
+            </pre>
+            <div style={{ color: "#334155", lineHeight: 1.7, marginTop: 14 }}>
+              <p>3. Vercel дээр deploy хийвэл нэг линкээр бүгд ашиглана.</p>
+              <p>4. Энэ хувилбар нь админ хэрэглэгч үүсгэх, эрх олгох, идэвхгүй болгох боломжтой.</p>
+              <p>5. Аюулгүй байдлын хувьд дараагийн шатанд Supabase Auth болон нууц үгийн шифрлэлт нэмэх нь зөв.</p>
+            </div>
+          </div>
+        )}
       </div>
-
-      <table border="1" style={{ marginTop: 20 }}>
-        <thead>
-          <tr>
-            <th>Нэр</th>
-            <th>Албан тушаал</th>
-            <th>Хувцас</th>
-            <th>Размер</th>
-            <th>Тоо</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map((r, i) => (
-            <tr key={i}>
-              <td>{r.employee}</td>
-              <td>{r.position}</td>
-              <td>{r.item}</td>
-              <td>{r.size}</td>
-              <td>{r.qty}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
