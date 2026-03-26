@@ -1,0 +1,136 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ================= CONFIG =================
+const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const TABLE = "uniform_records";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ================= COMPANY =================
+const COMPANY = "Дархан Сэлэнгийн цахилгаан түгээх сүлжээ ХК";
+const TITLE = "ББТХ ХАБЭА-н хувцас хэрэглэлийн бүртгэл";
+
+// ================= LOGIN =================
+const USER = "admin";
+const PASS = "1234";
+
+// ================= EMPLOYEES =================
+const employees = [
+  { name: "С.Батбаатар", position: "Хэлтсийн дарга" },
+  { name: "Ч.Золзаяа", position: "Тооцооны инженер" },
+  { name: "М.Ариунжаргал", position: "Эрчим хүч хэмнэлтийн менежер" },
+  { name: "Б.Мөнхбат", position: "Гэрээний инженер" },
+  { name: "Б.Энхтөр", position: "Тоолуур системийн ахлах инженер" },
+  { name: "Ж.Баярсайхан", position: "Тоолуур системийн инженер" },
+  { name: "Б.Төгөлдөр", position: "Судалгаа шинжилгээний инженер" },
+];
+
+// ================= UNIFORMS =================
+const uniforms = [
+  "Өвлийн ажлын хувцас",
+  "Өвлийн ажлын гутал",
+  "Зуны ажлын хувцас",
+  "Зуны ажлын гутал",
+  "Оффисе цамц",
+  "Оффисе хантааз",
+  "Хамгаалах дуулга",
+];
+
+export default function App() {
+  const [logged, setLogged] = useState(false);
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+
+  const [records, setRecords] = useState([]);
+  const [form, setForm] = useState({
+    employee: "",
+    position: "",
+    item: "",
+    size: "",
+    qty: 1,
+    date: new Date().toISOString().slice(0, 10),
+  });
+
+  // ===== LOGIN =====
+  if (!logged) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#0f172a,#0ea5e9)" }}>
+        <div style={{ background: "white", padding: 30, borderRadius: 20, width: 300 }}>
+          <h3>{COMPANY}</h3>
+          <h4>{TITLE}</h4>
+          <input placeholder="Нэвтрэх нэр" value={user} onChange={e => setUser(e.target.value)} />
+          <input type="password" placeholder="Нууц үг" value={pass} onChange={e => setPass(e.target.value)} />
+          <button onClick={() => {
+            if (user === USER && pass === PASS) setLogged(true);
+            else alert("Буруу нэвтрэлт");
+          }}>Нэвтрэх</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== LOAD =====
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    const { data } = await supabase.from(TABLE).select("*");
+    setRecords(data || []);
+  }
+
+  async function save() {
+    await supabase.from(TABLE).insert([form]);
+    load();
+  }
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h2>{COMPANY}</h2>
+      <h3>{TITLE}</h3>
+
+      <div style={{ marginTop: 20 }}>
+        <select onChange={e => {
+          const emp = employees.find(x => x.name === e.target.value);
+          setForm({ ...form, employee: emp.name, position: emp.position });
+        }}>
+          <option>Ажилтан сонгох</option>
+          {employees.map(e => <option key={e.name}>{e.name}</option>)}
+        </select>
+
+        <select onChange={e => setForm({ ...form, item: e.target.value })}>
+          <option>Хувцас сонгох</option>
+          {uniforms.map(u => <option key={u}>{u}</option>)}
+        </select>
+
+        <input placeholder="Размер" onChange={e => setForm({ ...form, size: e.target.value })} />
+        <input type="number" onChange={e => setForm({ ...form, qty: e.target.value })} />
+
+        <button onClick={save}>Хадгалах</button>
+      </div>
+
+      <table border="1" style={{ marginTop: 20 }}>
+        <thead>
+          <tr>
+            <th>Нэр</th>
+            <th>Албан тушаал</th>
+            <th>Хувцас</th>
+            <th>Размер</th>
+            <th>Тоо</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((r, i) => (
+            <tr key={i}>
+              <td>{r.employee}</td>
+              <td>{r.position}</td>
+              <td>{r.item}</td>
+              <td>{r.size}</td>
+              <td>{r.qty}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
