@@ -1,792 +1,121 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { Building2, ShieldCheck, UserCog, Users, Shirt, Plus, LogOut, Search, Download, Trash2, RefreshCw } from "lucide-react";
+import streamlit as st
+import pandas as pd
+from datetime import datetime, timedelta
+import os
 
-const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-const TABLE_RECORDS = "uniform_records";
-const TABLE_USERS = "app_users";
+# Хуудасны тохиргоо
+st.set_page_config(page_title="Safety - Хувцасны бүртгэл", layout="wide")
 
-const COMPANY = "Дархан Сэлэнгийн цахилгаан түгээх сүлжээ ХК";
-const APP_TITLE = "ББТХ ХАБЭА-н хувцас хэрэглэлийн бүртгэл";
-const DEPARTMENT = "Борлуулалтын бодлого төлөвлөлтийн хэлтэс";
+# Өгөгдөл хадгалах файлын нэр
+DATA_FILE = "uniform_data.csv"
 
-const DEFAULT_ADMIN = {
-  username: "admin",
-  password: "1234",
-  full_name: "Системийн админ",
-  role: "admin",
-  is_active: true,
-};
-
-const ROLE_LABELS = {
-  admin: "Админ",
-  manager: "Хариуцагч",
-  viewer: "Зөвхөн харах",
-};
-
-const employees = [
-  { name: "С.Батбаатар", position: "Хэлтсийн дарга" },
-  { name: "Ч.Золзаяа", position: "Тооцооны инженер" },
-  { name: "М.Ариунжаргал", position: "Эрчим хүч хэмнэлтийн менежер" },
-  { name: "Б.Мөнхбат", position: "Гэрээний инженер" },
-  { name: "Б.Энхтөр", position: "Тоолуур системийн ахлах инженер" },
-  { name: "Ж.Баярсайхан", position: "Тоолуур системийн инженер" },
-  { name: "Б.Төгөлдөр", position: "Судалгаа шинжилгээний инженер" },
-];
-
-const uniforms = [
-  "Өвлийн ажлын хувцас",
-  "Өвлийн ажлын гутал",
-  "Зуны ажлын хувцас",
-  "Зуны ажлын гутал",
-  "Оффисе цамц",
-  "Оффисе хантааз",
-  "Хамгаалах дуулга",
-];
-
-const employeeMap = Object.fromEntries(employees.map((e) => [e.name, e.position]));
-
-const hasConfig =
-  SUPABASE_URL.startsWith("https://") &&
-  !SUPABASE_URL.includes("YOUR_PROJECT_ID") &&
-  !!SUPABASE_ANON_KEY &&
-  !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
-
-const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-
-const cardStyle = {
-  background: "rgba(255,255,255,0.88)",
-  border: "1px solid rgba(255,255,255,0.5)",
-  borderRadius: 24,
-  boxShadow: "0 16px 40px rgba(15,23,42,0.12)",
-  backdropFilter: "blur(10px)",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: "1px solid #cbd5e1",
-  fontSize: 14,
-  background: "#fff",
-  boxSizing: "border-box",
-  outline: "none",
-};
-
-const primaryBtn = {
-  padding: "12px 16px",
-  borderRadius: 14,
-  border: "none",
-  background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
-  color: "white",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const secondaryBtn = {
-  padding: "12px 16px",
-  borderRadius: 14,
-  border: "1px solid #cbd5e1",
-  background: "white",
-  color: "#0f172a",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-function Badge({ children, color = "#e2e8f0", text = "#0f172a" }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "6px 10px",
-        borderRadius: 999,
-        background: color,
-        color: text,
-        fontSize: 12,
-        fontWeight: 700,
-      }}
-    >
-      {children}
-    </span>
-  );
+# Хувцасны норм (Жилээр)
+NORMS = {
+    "Өвлийн ажлын хувцас": 2,
+    "Өвлийн ажлын гутал": 2,
+    "Зуны ажлын хувцас": 2,
+    "Зуны ажлын гутал": 2,
+    "Оффис цамц": 3,
+    "Оффис хантааз": 3,
+    "Хамгаалах дуулга": 5
 }
 
-function exportCSV(filename, rows) {
-  if (!rows.length) {
-    alert("Экспортлох өгөгдөл алга.");
-    return;
-  }
-  const esc = (v) => {
-    const s = String(v ?? "");
-    if (s.includes(",") || s.includes('"') || s.includes("
-")) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  };
-  const headers = Object.keys(rows[0]);
-  const csv = [headers.map(esc).join(",")]
-    .concat(rows.map((row) => headers.map((h) => esc(row[h])).join(",")))
-    .join("
-");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+# Анхны өгөгдлийг бэлдэх функц
+def load_data():
+    if os.path.exists(DATA_FILE):
+        return pd.read_csv(DATA_FILE)
+    else:
+        # Хэрэв файл байхгүй бол хоосон бүтэц үүсгэнэ
+        return pd.DataFrame(columns=[
+            "Ажилтан", "Хүйс", "Хувцас", "Размер", "Олгосон огноо", "Дараагийн олголт", "Төлөв"
+        ])
+
+# Өгөгдөл хадгалах функц
+def save_data(df):
+    df.to_csv(DATA_FILE, index=False)
+
+st.title("🛡️ Хэлтсийн ажлын хувцас хяналтын систем")
+
+# Ажилчдын тогтмол мэдээлэл
+STAFF_INFO = {
+    "С.Батбаатар": {"албан_тушаал": "Хэлтсийн дарга", "хүйс": "Эр"},
+    "Ч.Золзаяа": {"албан_тушаал": "Тооцооны инженер", "хүйс": "Эм"},
+    "М.Ариунжаргал": {"албан_тушаал": "Эрчим хүч хэмнэлтийн менежер", "хүйс": "Эм"},
+    "Б.Мөнхбат": {"албан_тушаал": "Гэрээний инженер", "хүйс": "Эр"},
+    "Б.Энхтөр": {"албан_тушаал": "Тоолуур системийн ахлах инженер", "хүйс": "Эр"},
+    "Ж.Баярсайхан": {"албан_тушаал": "Тоолуур системийн инженер", "хүйс": "Эр"},
+    "Б.Төгөлдөр": {"албан_тушаал": "Судалгаа шинжилгээний инженер", "хүйс": "Эр"},
 }
 
-function getRoleBadge(role) {
-  if (role === "admin") return { color: "#fee2e2", text: "#b91c1c", label: "Админ" };
-  if (role === "manager") return { color: "#dbeafe", text: "#1d4ed8", label: "Хариуцагч" };
-  return { color: "#e2e8f0", text: "#0f172a", label: "Зөвхөн харах" };
-}
+df = load_data()
 
-export default function App() {
-  const [ready, setReady] = useState(false);
-  const [status, setStatus] = useState(hasConfig ? "Онлайн өгөгдлийн сантай холбогдоход бэлэн." : "Supabase тохируулаагүй тул demo горимоор ажиллана.");
-  const [currentUser, setCurrentUser] = useState(null);
-  const [login, setLogin] = useState({ username: "", password: "" });
-  const [activeTab, setActiveTab] = useState("records");
+# SIDEBAR - Бүртгэл оруулах хэсэг
+with st.sidebar:
+    st.header("➕ Шинэ бүртгэл")
+    name = st.selectbox("Ажилтан", list(STAFF_INFO.keys()))
+    gender = STAFF_INFO[name]["хүйс"]
+    st.info(f"Хүйс: {gender}")
+    
+    item = st.selectbox("Хувцасны төрөл", list(NORMS.keys()))
+    size = st.text_input("Размер (Жишээ нь: L, 42, XL)")
+    date_gen = st.date_input("Олгосон огноо", datetime.now())
+    
+    if st.button("Хадгалах"):
+        # Дараагийн олголтыг тооцох
+        next_date = date_gen + timedelta(days=NORMS[item] * 365)
+        
+        new_row = {
+            "Ажилтан": name,
+            "Хүйс": gender,
+            "Хувцас": item,
+            "Размер": size,
+            "Олгосон огноо": date_gen.strftime('%Y-%m-%d'),
+            "Дараагийн олголт": next_date.strftime('%Y-%m-%d'),
+            "Төлөв": "✅ Идэвхтэй"
+        }
+        
+        # Хуучин өгөгдөл дээр нэмэх
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        save_data(df)
+        st.success("Амжилттай хадгалагдлаа!")
 
-  const [users, setUsers] = useState(hasConfig ? [] : [DEFAULT_ADMIN]);
-  const [records, setRecords] = useState([]);
+# ҮНДСЭН ХЭСЭГ - Хяналтын самбар
+if not df.empty:
+    # Огноог хөрвүүлэх
+    df['Дараагийн олголт'] = pd.to_datetime(df['Дараагийн олголт'])
+    
+    # Төлөв шинэчлэх логик
+    today = pd.Timestamp(datetime.now().date())
+    def check_status(row):
+        days_left = (row['Дараагийн олголт'] - today).days
+        if days_left <= 0: return "❌ Хугацаа дууссан"
+        if days_left <= 30: return "⚠️ Солих дөхсөн"
+        return "✅ Идэвхтэй"
 
-  const [userForm, setUserForm] = useState({
-    full_name: "",
-    username: "",
-    password: "",
-    role: "viewer",
-  });
+    df['Төлөв'] = df.apply(check_status, axis=1)
 
-  const [recordForm, setRecordForm] = useState({
-    employee: employees[0].name,
-    position: employees[0].position,
-    item: uniforms[0],
-    size: "",
-    qty: 1,
-    issued_date: new Date().toISOString().slice(0, 10),
-    note: "",
-  });
+    # Шүүлтүүр
+    st.subheader("📊 Нийт бүртгэл")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        search_name = st.multiselect("Ажилтнаар шүүх", options=df["Ажилтан"].unique())
+    
+    filtered_df = df
+    if search_name:
+        filtered_df = df[df["Ажилтан"].isin(search_name)]
 
-  const [search, setSearch] = useState("");
-  const [employeeFilter, setEmployeeFilter] = useState("all");
-  const [uniformFilter, setUniformFilter] = useState("all");
+    # Хүснэгтийн өнгө
+    def style_row(val):
+        color = 'white'
+        if val == "❌ Хугацаа дууссан": color = '#ff4b4b'
+        elif val == "⚠️ Солих дөхсөн": color = '#ffa500'
+        return f'color: {color}; font-weight: bold'
 
-  const canManageUsers = currentUser?.role === "admin";
-  const canEditRecords = currentUser?.role === "admin" || currentUser?.role === "manager";
+    st.dataframe(filtered_df.style.applymap(style_row, subset=['Төлөв']), use_container_width=True)
+    
+    # Татаж авах (Excel-ээр ашиглах бол)
+    csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("Excel рүү татах (.csv)", csv, "safety_report.csv", "text/csv")
 
-  useEffect(() => {
-    let mounted = true;
-    async function init() {
-      if (!supabase) {
-        if (mounted) setReady(true);
-        return;
-      }
-      await ensureDefaultAdmin();
-      if (!mounted) return;
-      await Promise.all([loadUsers(), loadRecords()]);
-      if (mounted) setReady(true);
-    }
-    init();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  async function ensureDefaultAdmin() {
-    if (!supabase) return;
-    const { data, error } = await supabase.from(TABLE_USERS).select("id, username").eq("username", DEFAULT_ADMIN.username).maybeSingle();
-    if (error) {
-      setStatus(`Админ шалгахад алдаа: ${error.message}`);
-      return;
-    }
-    if (!data) {
-      const { error: insertError } = await supabase.from(TABLE_USERS).insert([DEFAULT_ADMIN]);
-      if (insertError) setStatus(`Анхны админ үүсгэхэд алдаа: ${insertError.message}`);
-    }
-  }
-
-  async function loadUsers() {
-    if (!supabase) return;
-    const { data, error } = await supabase.from(TABLE_USERS).select("*").order("created_at", { ascending: false });
-    if (error) {
-      setStatus(`Хэрэглэгч ачаалахад алдаа: ${error.message}`);
-      return;
-    }
-    setUsers(data || []);
-  }
-
-  async function loadRecords() {
-    if (!supabase) return;
-    const { data, error } = await supabase.from(TABLE_RECORDS).select("*").order("issued_date", { ascending: false }).order("created_at", { ascending: false });
-    if (error) {
-      setStatus(`Бүртгэл ачаалахад алдаа: ${error.message}`);
-      return;
-    }
-    setRecords(data || []);
-  }
-
-  async function handleLogin() {
-    if (!login.username || !login.password) {
-      alert("Нэвтрэх нэр, нууц үгээ оруулна уу.");
-      return;
-    }
-
-    if (!supabase) {
-      if (login.username === DEFAULT_ADMIN.username && login.password === DEFAULT_ADMIN.password) {
-        setCurrentUser(DEFAULT_ADMIN);
-        setStatus("Demo admin амжилттай нэвтэрлээ.");
-      } else {
-        alert("Demo горимд зөвхөн admin / 1234 ашиглана.");
-      }
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from(TABLE_USERS)
-      .select("*")
-      .eq("username", login.username)
-      .eq("password", login.password)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (error) {
-      alert(`Нэвтрэх үед алдаа: ${error.message}`);
-      return;
-    }
-    if (!data) {
-      alert("Нэвтрэх нэр эсвэл нууц үг буруу байна.");
-      return;
-    }
-
-    setCurrentUser(data);
-    setStatus(`${data.full_name} амжилттай нэвтэрлээ.`);
-  }
-
-  function logout() {
-    setCurrentUser(null);
-    setLogin({ username: "", password: "" });
-  }
-
-  async function addUser() {
-    if (!canManageUsers) return;
-    if (!userForm.full_name || !userForm.username || !userForm.password) {
-      alert("Хэрэглэгчийн мэдээллийг бүрэн оруулна уу.");
-      return;
-    }
-    if (!supabase) {
-      alert("Demo горимд онлайн хэрэглэгч үүсгэхгүй.");
-      return;
-    }
-    const payload = { ...userForm, is_active: true };
-    const { error } = await supabase.from(TABLE_USERS).insert([payload]);
-    if (error) {
-      alert(`Хэрэглэгч нэмэхэд алдаа: ${error.message}`);
-      return;
-    }
-    setUserForm({ full_name: "", username: "", password: "", role: "viewer" });
-    await loadUsers();
-    setStatus("Шинэ хэрэглэгч үүсгэлээ.");
-  }
-
-  async function toggleUserActive(user) {
-    if (!canManageUsers || !supabase) return;
-    const { error } = await supabase.from(TABLE_USERS).update({ is_active: !user.is_active }).eq("id", user.id);
-    if (error) {
-      alert(`Хэрэглэгчийн төлөв өөрчлөхөд алдаа: ${error.message}`);
-      return;
-    }
-    await loadUsers();
-  }
-
-  async function addRecord() {
-    if (!canEditRecords) return;
-    if (!recordForm.employee || !recordForm.item || !recordForm.issued_date) {
-      alert("Бүртгэлийн мэдээллээ бүрэн оруулна уу.");
-      return;
-    }
-    if (!supabase) {
-      const localRecord = {
-        id: `local-${Date.now()}`,
-        department: DEPARTMENT,
-        employee: recordForm.employee,
-        position: recordForm.position,
-        item: recordForm.item,
-        size: recordForm.size,
-        qty: Number(recordForm.qty || 1),
-        issued_date: recordForm.issued_date,
-        note: recordForm.note,
-        created_by: currentUser?.username || "admin",
-      };
-      setRecords((prev) => [localRecord, ...prev]);
-      setStatus("Demo горимд локал бүртгэл нэмэгдлээ.");
-      return;
-    }
-
-    const payload = {
-      department: DEPARTMENT,
-      employee: recordForm.employee,
-      position: recordForm.position,
-      item: recordForm.item,
-      size: recordForm.size,
-      qty: Number(recordForm.qty || 1),
-      issued_date: recordForm.issued_date,
-      note: recordForm.note,
-      created_by: currentUser?.username || "",
-    };
-
-    const { error } = await supabase.from(TABLE_RECORDS).insert([payload]);
-    if (error) {
-      alert(`Бүртгэл хадгалахад алдаа: ${error.message}`);
-      return;
-    }
-    await loadRecords();
-    setStatus("Бүртгэл амжилттай хадгалагдлаа.");
-  }
-
-  async function deleteRecord(id) {
-    if (!canEditRecords) return;
-    if (!window.confirm("Энэ бүртгэлийг устгах уу?")) return;
-
-    if (!supabase) {
-      setRecords((prev) => prev.filter((r) => r.id !== id));
-      return;
-    }
-
-    const { error } = await supabase.from(TABLE_RECORDS).delete().eq("id", id);
-    if (error) {
-      alert(`Бүртгэл устгахад алдаа: ${error.message}`);
-      return;
-    }
-    await loadRecords();
-  }
-
-  function handleEmployeeChange(name) {
-    setRecordForm((prev) => ({ ...prev, employee: name, position: employeeMap[name] || "" }));
-  }
-
-  const filteredRecords = useMemo(() => {
-    return records.filter((r) => {
-      const q = search.trim().toLowerCase();
-      const matchQ = !q || [r.employee, r.position, r.item, r.size, r.note, r.created_by].join(" ").toLowerCase().includes(q);
-      const matchEmployee = employeeFilter === "all" || r.employee === employeeFilter;
-      const matchUniform = uniformFilter === "all" || r.item === uniformFilter;
-      return matchQ && matchEmployee && matchUniform;
-    });
-  }, [records, search, employeeFilter, uniformFilter]);
-
-  const summary = useMemo(() => {
-    const totalQty = filteredRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
-    const employeeCount = new Set(filteredRecords.map((r) => r.employee)).size;
-    const grouped = filteredRecords.reduce((acc, r) => {
-      acc[r.item] = (acc[r.item] || 0) + Number(r.qty || 0);
-      return acc;
-    }, {});
-    const topItem = Object.entries(grouped).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-    return { totalQty, employeeCount, topItem };
-  }, [filteredRecords]);
-
-  function exportRecordsReport() {
-    exportCSV(
-      `bbth-burtgel-${new Date().toISOString().slice(0, 10)}.csv`,
-      filteredRecords.map((r, i) => ({
-        "№": i + 1,
-        "Хэлтэс": r.department,
-        "Нэр": r.employee,
-        "Албан тушаал": r.position,
-        "Хэрэглэл": r.item,
-        "Размер": r.size,
-        "Тоо": r.qty,
-        "Огноо": r.issued_date,
-        "Тэмдэглэл": r.note,
-        "Бүртгэсэн": r.created_by,
-      }))
-    );
-  }
-
-  function exportSummaryReport() {
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      const key = `${r.employee}|||${r.item}`;
-      if (!grouped[key]) grouped[key] = { employee: r.employee, item: r.item, qty: 0 };
-      grouped[key].qty += Number(r.qty || 0);
-    });
-    exportCSV(
-      `bbth-tailan-${new Date().toISOString().slice(0, 10)}.csv`,
-      Object.values(grouped).map((r, i) => ({
-        "№": i + 1,
-        "Нэр": r.employee,
-        "Хэрэглэл": r.item,
-        "Нийт": r.qty,
-      }))
-    );
-  }
-
-  if (!ready) {
-    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "Arial, sans-serif" }}>Ачаалж байна...</div>;
-  }
-
-  if (!currentUser) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          fontFamily: "Arial, sans-serif",
-          background:
-            "radial-gradient(circle at top left, rgba(125,211,252,0.45), transparent 30%), radial-gradient(circle at top right, rgba(59,130,246,0.30), transparent 30%), linear-gradient(135deg,#0f172a 0%,#0b3b66 45%,#0ea5e9 100%)",
-          display: "grid",
-          placeItems: "center",
-          padding: 20,
-        }}
-      >
-        <div style={{ ...cardStyle, width: "100%", maxWidth: 480, padding: 28 }}>
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <div
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 24,
-                background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
-                display: "grid",
-                placeItems: "center",
-                color: "white",
-              }}
-            >
-              <Building2 size={34} />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{COMPANY}</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>{APP_TITLE}</div>
-              <div style={{ fontSize: 13, color: "#475569", marginTop: 6 }}>{DEPARTMENT}</div>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 12, marginTop: 22 }}>
-            <div>
-              <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нэвтрэх нэр</label>
-              <input style={inputStyle} value={login.username} onChange={(e) => setLogin({ ...login, username: e.target.value })} />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нууц үг</label>
-              <input type="password" style={inputStyle} value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} />
-            </div>
-            <button style={primaryBtn} onClick={handleLogin}>Нэвтрэх</button>
-          </div>
-
-          <div style={{ marginTop: 18, display: "grid", gap: 8, fontSize: 13, color: "#475569" }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}><ShieldCheck size={16} />Админ бусад хэрэглэгчид эрх нээнэ</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Users size={16} />Зөвхөн ББТХ-ийн 7 инженер бүртгэгдэнэ</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Shirt size={16} />7 ангиллын хувцас, хэрэглэлийн бүртгэлтэй</div>
-          </div>
-
-          <div style={{ marginTop: 16, fontSize: 12, color: "#475569" }}>Demo: <b>admin</b> / <b>1234</b></div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        fontFamily: "Arial, sans-serif",
-        background:
-          "radial-gradient(circle at top left, rgba(186,230,253,0.55), transparent 22%), radial-gradient(circle at right, rgba(125,211,252,0.35), transparent 24%), linear-gradient(180deg,#eff6ff 0%,#e0f2fe 40%,#f8fafc 100%)",
-        padding: 20,
-      }}
-    >
-      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        <div style={{ ...cardStyle, padding: 24, marginBottom: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-              <div
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 24,
-                  background: "linear-gradient(135deg,#0f172a,#0ea5e9)",
-                  display: "grid",
-                  placeItems: "center",
-                  color: "white",
-                }}
-              >
-                <Building2 size={34} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "#334155", fontWeight: 700 }}>{COMPANY}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>{APP_TITLE}</div>
-                <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>{DEPARTMENT}</div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              {(() => {
-                const badge = getRoleBadge(currentUser.role);
-                return <Badge color={badge.color} text={badge.text}>{badge.label}</Badge>;
-              })()}
-              <Badge color={hasConfig ? "#dcfce7" : "#fef3c7"} text={hasConfig ? "#166534" : "#92400e"}>{hasConfig ? "Онлайн" : "Demo"}</Badge>
-              <span style={{ fontWeight: 700, color: "#334155" }}>{currentUser.full_name}</span>
-              <button style={secondaryBtn} onClick={logout}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><LogOut size={16} />Гарах</span></button>
-            </div>
-          </div>
-          <div style={{ marginTop: 12, fontSize: 13, color: "#475569" }}>{status}</div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16, marginBottom: 18 }}>
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", marginBottom: 8 }}><Shirt size={18} />Нийт олгосон тоо</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: "#0f172a" }}>{summary.totalQty}</div>
-          </div>
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", marginBottom: 8 }}><Users size={18} />Хамрагдсан ажилтан</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: "#0f172a" }}>{summary.employeeCount}</div>
-          </div>
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", marginBottom: 8 }}><RefreshCw size={18} />Их олгогдсон төрөл</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>{summary.topItem}</div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          <button style={activeTab === "records" ? primaryBtn : secondaryBtn} onClick={() => setActiveTab("records")}>Бүртгэл</button>
-          {canManageUsers && <button style={activeTab === "users" ? primaryBtn : secondaryBtn} onClick={() => setActiveTab("users")}>Хэрэглэгчийн эрх</button>}
-          <button style={activeTab === "setup" ? primaryBtn : secondaryBtn} onClick={() => setActiveTab("setup")}>Суулгах заавар</button>
-        </div>
-
-        {activeTab === "records" && (
-          <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 18 }}>
-            <div style={{ ...cardStyle, padding: 20, alignSelf: "start" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 16 }}>Шинэ бүртгэл</div>
-              <div style={{ display: "grid", gap: 12 }}>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Ажилтан</label>
-                  <select style={inputStyle} value={recordForm.employee} onChange={(e) => handleEmployeeChange(e.target.value)} disabled={!canEditRecords}>
-                    {employees.map((e) => <option key={e.name} value={e.name}>{e.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Албан тушаал</label>
-                  <input style={{ ...inputStyle, background: "#f8fafc" }} value={recordForm.position} readOnly />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Хэрэглэлийн төрөл</label>
-                  <select style={inputStyle} value={recordForm.item} onChange={(e) => setRecordForm({ ...recordForm, item: e.target.value })} disabled={!canEditRecords}>
-                    {uniforms.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Размер</label>
-                    <input style={inputStyle} value={recordForm.size} onChange={(e) => setRecordForm({ ...recordForm, size: e.target.value })} disabled={!canEditRecords} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Тоо</label>
-                    <input type="number" min="1" style={inputStyle} value={recordForm.qty} onChange={(e) => setRecordForm({ ...recordForm, qty: e.target.value })} disabled={!canEditRecords} />
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Олгосон огноо</label>
-                  <input type="date" style={inputStyle} value={recordForm.issued_date} onChange={(e) => setRecordForm({ ...recordForm, issued_date: e.target.value })} disabled={!canEditRecords} />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Тэмдэглэл</label>
-                  <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={recordForm.note} onChange={(e) => setRecordForm({ ...recordForm, note: e.target.value })} disabled={!canEditRecords} />
-                </div>
-                <button style={{ ...primaryBtn, opacity: canEditRecords ? 1 : 0.6 }} onClick={addRecord} disabled={!canEditRecords}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><Plus size={16} />Хадгалах</span></button>
-              </div>
-            </div>
-
-            <div style={{ ...cardStyle, padding: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Бүртгэлийн жагсаалт</div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button style={secondaryBtn} onClick={loadRecords}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><RefreshCw size={16} />Шинэчлэх</span></button>
-                  <button style={secondaryBtn} onClick={exportRecordsReport}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><Download size={16} />Бүртгэл экспорт</span></button>
-                  <button style={secondaryBtn} onClick={exportSummaryReport}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><Download size={16} />Тайлан экспорт</span></button>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-                <div style={{ position: "relative" }}>
-                  <Search size={16} style={{ position: "absolute", left: 12, top: 13, color: "#64748b" }} />
-                  <input style={{ ...inputStyle, paddingLeft: 36 }} placeholder="Хайлт..." value={search} onChange={(e) => setSearch(e.target.value)} />
-                </div>
-                <select style={inputStyle} value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}>
-                  <option value="all">Бүх ажилтан</option>
-                  {employees.map((e) => <option key={e.name} value={e.name}>{e.name}</option>)}
-                </select>
-                <select style={inputStyle} value={uniformFilter} onChange={(e) => setUniformFilter(e.target.value)}>
-                  <option value="all">Бүх төрөл</option>
-                  {uniforms.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-
-              <div style={{ overflow: "auto", border: "1px solid #dbeafe", borderRadius: 18, background: "white" }}>
-                <table style={{ width: "100%", minWidth: 950, borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                      {["№", "Нэр", "Албан тушаал", "Хэрэглэл", "Размер", "Тоо", "Огноо", "Бүртгэсэн", "Тэмдэглэл", "Үйлдэл"].map((h) => (
-                        <th key={h} style={{ padding: 12, borderBottom: "1px solid #e2e8f0", fontSize: 13, color: "#334155" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRecords.length ? filteredRecords.map((r, i) => (
-                      <tr key={r.id || i}>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{i + 1}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 700 }}>{r.employee}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.position}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.item}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.size || "—"}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.qty}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.issued_date}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.created_by || "—"}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{r.note || "—"}</td>
-                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
-                          <button style={{ ...secondaryBtn, padding: "8px 10px", opacity: canEditRecords ? 1 : 0.6 }} onClick={() => deleteRecord(r.id)} disabled={!canEditRecords}><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Trash2 size={14} />Устгах</span></button>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={10} style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Бүртгэл олдсонгүй.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "users" && canManageUsers && (
-          <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 18 }}>
-            <div style={{ ...cardStyle, padding: 20, alignSelf: "start" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 16 }}>Шинэ хэрэглэгч</div>
-              <div style={{ display: "grid", gap: 12 }}>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Овог нэр</label>
-                  <input style={inputStyle} value={userForm.full_name} onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })} />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нэвтрэх нэр</label>
-                  <input style={inputStyle} value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Нууц үг</label>
-                  <input style={inputStyle} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontWeight: 700, fontSize: 13 }}>Эрхийн түвшин</label>
-                  <select style={inputStyle} value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                    <option value="admin">Админ</option>
-                    <option value="manager">Хариуцагч</option>
-                    <option value="viewer">Зөвхөн харах</option>
-                  </select>
-                </div>
-                <button style={primaryBtn} onClick={addUser}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><UserCog size={16} />Хэрэглэгч үүсгэх</span></button>
-              </div>
-            </div>
-
-            <div style={{ ...cardStyle, padding: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Хэрэглэгчийн жагсаалт</div>
-                <button style={secondaryBtn} onClick={loadUsers}><span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><RefreshCw size={16} />Шинэчлэх</span></button>
-              </div>
-
-              <div style={{ overflow: "auto", border: "1px solid #dbeafe", borderRadius: 18, background: "white" }}>
-                <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                      {["№", "Овог нэр", "Нэвтрэх нэр", "Эрх", "Төлөв", "Үйлдэл"].map((h) => (
-                        <th key={h} style={{ padding: 12, borderBottom: "1px solid #e2e8f0", fontSize: 13, color: "#334155" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u, i) => {
-                      const badge = getRoleBadge(u.role);
-                      return (
-                        <tr key={u.id || i}>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{i + 1}</td>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 700 }}>{u.full_name}</td>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{u.username}</td>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><Badge color={badge.color} text={badge.text}>{badge.label}</Badge></td>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><Badge color={u.is_active ? "#dcfce7" : "#fef3c7"} text={u.is_active ? "#166534" : "#92400e"}>{u.is_active ? "Идэвхтэй" : "Идэвхгүй"}</Badge></td>
-                          <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
-                            {u.username === DEFAULT_ADMIN.username ? (
-                              <span style={{ color: "#64748b", fontSize: 13 }}>Үндсэн админ</span>
-                            ) : (
-                              <button style={{ ...secondaryBtn, padding: "8px 10px" }} onClick={() => toggleUserActive(u)}>{u.is_active ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "setup" && (
-          <div style={{ ...cardStyle, padding: 24 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", marginBottom: 14 }}>Supabase SQL</div>
-            <pre style={{ marginTop: 12, background: "#0f172a", color: "#e2e8f0", padding: 18, borderRadius: 18, overflow: "auto", fontSize: 12 }}>
-{`create table if not exists public.app_users (
-  id uuid primary key default gen_random_uuid(),
-  full_name text not null,
-  username text not null unique,
-  password text not null,
-  role text not null default 'viewer',
-  is_active boolean not null default true,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.uniform_records (
-  id uuid primary key default gen_random_uuid(),
-  department text not null,
-  employee text not null,
-  position text not null,
-  item text not null,
-  size text,
-  qty integer not null default 1,
-  issued_date date not null,
-  note text,
-  created_by text,
-  created_at timestamptz not null default now()
-);
-
-alter table public.app_users enable row level security;
-alter table public.uniform_records enable row level security;
-
-drop policy if exists "users read" on public.app_users;
-drop policy if exists "users insert" on public.app_users;
-drop policy if exists "users update" on public.app_users;
-drop policy if exists "records read" on public.uniform_records;
-drop policy if exists "records insert" on public.uniform_records;
-drop policy if exists "records delete" on public.uniform_records;
-
-create policy "users read" on public.app_users for select using (true);
-create policy "users insert" on public.app_users for insert with check (true);
-create policy "users update" on public.app_users for update using (true);
-
-create policy "records read" on public.uniform_records for select using (true);
-create policy "records insert" on public.uniform_records for insert with check (true);
-create policy "records delete" on public.uniform_records for delete using (true);`}
-            </pre>
-            <div style={{ marginTop: 14, color: "#334155", lineHeight: 1.7 }}>
-              <p>1. SUPABASE_URL, SUPABASE_ANON_KEY утгаа өөрийн төслөөр солино.</p>
-              <p>2. Дээрх SQL-ийг ажиллуулна.</p>
-              <p>3. Дараа нь Vercel дээр deploy хийгээд линкээ ашиглана.</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+else:
+    st.warning("Одоогоор бүртгэл хоосон байна. Баруун талын цэснээс мэдээлэл оруулна уу.")
